@@ -106,13 +106,18 @@ use pocketmine\nbt\tag\CompoundTag;
 use pocketmine\nbt\tag\IntTag;
 use pocketmine\network\mcpe\NetworkSession;
 use pocketmine\network\mcpe\protocol\AnimatePacket;
+use pocketmine\network\mcpe\protocol\LevelEventPacket;
 use pocketmine\network\mcpe\protocol\MovePlayerPacket;
 use pocketmine\network\mcpe\protocol\SetActorMotionPacket;
+use pocketmine\network\mcpe\protocol\SetHudPacket;
 use pocketmine\network\mcpe\protocol\types\BlockPosition;
 use pocketmine\network\mcpe\protocol\types\entity\EntityMetadataCollection;
 use pocketmine\network\mcpe\protocol\types\entity\EntityMetadataFlags;
 use pocketmine\network\mcpe\protocol\types\entity\EntityMetadataProperties;
 use pocketmine\network\mcpe\protocol\types\entity\PlayerMetadataFlags;
+use pocketmine\network\mcpe\protocol\types\hud\HudElement;
+use pocketmine\network\mcpe\protocol\types\hud\HudVisibility;
+use pocketmine\network\mcpe\protocol\types\LevelEvent;
 use pocketmine\permission\DefaultPermissionNames;
 use pocketmine\permission\DefaultPermissions;
 use pocketmine\permission\PermissibleBase;
@@ -905,6 +910,12 @@ class Player extends Human implements CommandSender, ChunkListener, IPlayer{
 			$this->logger->debug("Quit while dead, forcing respawn");
 			$this->actuallyRespawn();
 		}
+
+		$this->getNetworkSession()->sendDataPacket(SetHudPacket::create([
+			HudElement::PAPER_DOLL, HudElement::ARMOR, HudElement::TOOLTIPS, HudElement::TOUCH_CONTROLS, HudElement::CROSSHAIR,
+			HudElement::HOTBAR, HudElement::HEALTH, HudElement::XP, HudElement::FOOD, HudElement::AIR_BUBBLES, HudElement::HORSE_HEALTH,
+		], HudVisibility::RESET));
+		$this->getNetworkSession()->sendDataPacket(LevelEventPacket::create(LevelEvent::SET_GAME_SPEED, 0, new Vector3(1, 0, 0)));
 	}
 
 	/**
