@@ -158,12 +158,6 @@ class InGamePacketHandler extends ChunkRequestPacketHandler{
 		return false;
 	}
 
-	public function handleMovePlayer(MovePlayerPacket $packet) : bool{
-		//The client sends this every time it lands on the ground, even when using PlayerAuthInputPacket.
-		//Silence the debug spam that this causes.
-		return true;
-	}
-
 	private function resolveOnOffInputFlags(int $inputFlags, int $startFlag, int $stopFlag) : ?bool{
 		$enabled = ($inputFlags & (1 << $startFlag)) !== 0;
 		$disabled = ($inputFlags & (1 << $stopFlag)) !== 0;
@@ -295,10 +289,6 @@ class InGamePacketHandler extends ChunkRequestPacketHandler{
 		}
 
 		return $packetHandled;
-	}
-
-	public function handleLevelSoundEventPacketV1(LevelSoundEventPacketV1 $packet) : bool{
-		return true; //useless leftover from 1.8
 	}
 
 	public function handleActorEvent(ActorEventPacket $packet) : bool{
@@ -644,10 +634,6 @@ class InGamePacketHandler extends ChunkRequestPacketHandler{
 		return false;
 	}
 
-	public function handleMobArmorEquipment(MobArmorEquipmentPacket $packet) : bool{
-		return true; //Not used
-	}
-
 	public function handleInteract(InteractPacket $packet) : bool{
 		if($packet->action === InteractPacket::ACTION_MOUSEOVER){
 			//TODO HACK: silence useless spam (MCPE 1.8)
@@ -725,10 +711,6 @@ class InGamePacketHandler extends ChunkRequestPacketHandler{
 		return true;
 	}
 
-	public function handleSetActorMotion(SetActorMotionPacket $packet) : bool{
-		return true; //Not used: This packet is (erroneously) sent to the server when the client is riding a vehicle.
-	}
-
 	public function handleAnimate(AnimatePacket $packet) : bool{
 		return true; //Not used
 	}
@@ -736,14 +718,6 @@ class InGamePacketHandler extends ChunkRequestPacketHandler{
 	public function handleContainerClose(ContainerClosePacket $packet) : bool{
 		$this->inventoryManager->onClientRemoveWindow($packet->windowId);
 		return true;
-	}
-
-	public function handlePlayerHotbar(PlayerHotbarPacket $packet) : bool{
-		return true; //this packet is useless
-	}
-
-	public function handleCraftingEvent(CraftingEventPacket $packet) : bool{
-		return true; //this is a broken useless packet, so we don't use it
 	}
 
 	public function handleBlockActorData(BlockActorDataPacket $packet) : bool{
@@ -788,10 +762,6 @@ class InGamePacketHandler extends ChunkRequestPacketHandler{
 		return false;
 	}
 
-	public function handlePlayerInput(PlayerInputPacket $packet) : bool{
-		return false; //TODO
-	}
-
 	public function handleSetPlayerGameType(SetPlayerGameTypePacket $packet) : bool{
 		$gameMode = $this->session->getTypeConverter()->protocolGameModeToCore($packet->gamemode);
 		if($gameMode !== $this->player->getGamemode()){
@@ -801,26 +771,10 @@ class InGamePacketHandler extends ChunkRequestPacketHandler{
 		return true;
 	}
 
-	public function handleSpawnExperienceOrb(SpawnExperienceOrbPacket $packet) : bool{
-		return false; //TODO
-	}
-
-	public function handleMapInfoRequest(MapInfoRequestPacket $packet) : bool{
-		return false; //TODO
-	}
-
 	public function handleRequestChunkRadius(RequestChunkRadiusPacket $packet) : bool{
 		$this->player->setViewDistance($packet->radius);
 
 		return true;
-	}
-
-	public function handleBossEvent(BossEventPacket $packet) : bool{
-		return false; //TODO
-	}
-
-	public function handleShowCredits(ShowCreditsPacket $packet) : bool{
-		return false; //TODO: handle resume
 	}
 
 	public function handleCommandRequest(CommandRequestPacket $packet) : bool{
@@ -829,10 +783,6 @@ class InGamePacketHandler extends ChunkRequestPacketHandler{
 			return true;
 		}
 		return false;
-	}
-
-	public function handleCommandBlockUpdate(CommandBlockUpdatePacket $packet) : bool{
-		return false; //TODO
 	}
 
 	public function handlePlayerSkin(PlayerSkinPacket $packet) : bool{
@@ -853,10 +803,6 @@ class InGamePacketHandler extends ChunkRequestPacketHandler{
 		return $this->player->changeSkin($skin, $packet->newSkinName, $packet->oldSkinName);
 	}
 
-	public function handleSubClientLogin(SubClientLoginPacket $packet) : bool{
-		return false; //TODO
-	}
-
 	/**
 	 * @throws PacketHandlingException
 	 */
@@ -875,102 +821,6 @@ class InGamePacketHandler extends ChunkRequestPacketHandler{
 		return $result;
 	}
 
-	public function handleBookEdit(BookEditPacket $packet) : bool{
-		$inventory = $this->player->getInventory();
-		if(!$inventory->slotExists($packet->inventorySlot)){
-			return false;
-		}
-		//TODO: break this up into book API things
-		$oldBook = $inventory->getItem($packet->inventorySlot);
-		if(!($oldBook instanceof WritableBook)){
-			return false;
-		}
-
-		$newBook = clone $oldBook;
-		$modifiedPages = [];
-		$cancel = false;
-		switch($packet->type){
-			case BookEditPacket::TYPE_REPLACE_PAGE:
-				$text = self::checkBookText($packet->text, "page text", 256, WritableBookPage::PAGE_LENGTH_HARD_LIMIT_BYTES, $cancel);
-				$newBook->setPageText($packet->pageNumber, $text);
-				$modifiedPages[] = $packet->pageNumber;
-				break;
-			case BookEditPacket::TYPE_ADD_PAGE:
-				if(!$newBook->pageExists($packet->pageNumber)){
-					//this may only come before a page which already exists
-					//TODO: the client can send insert-before actions on trailing client-side pages which cause odd behaviour on the server
-					return false;
-				}
-				$text = self::checkBookText($packet->text, "page text", 256, WritableBookPage::PAGE_LENGTH_HARD_LIMIT_BYTES, $cancel);
-				$newBook->insertPage($packet->pageNumber, $text);
-				$modifiedPages[] = $packet->pageNumber;
-				break;
-			case BookEditPacket::TYPE_DELETE_PAGE:
-				if(!$newBook->pageExists($packet->pageNumber)){
-					return false;
-				}
-				$newBook->deletePage($packet->pageNumber);
-				$modifiedPages[] = $packet->pageNumber;
-				break;
-			case BookEditPacket::TYPE_SWAP_PAGES:
-				if(!$newBook->pageExists($packet->pageNumber) || !$newBook->pageExists($packet->secondaryPageNumber)){
-					//the client will create pages on its own without telling us until it tries to switch them
-					$newBook->addPage(max($packet->pageNumber, $packet->secondaryPageNumber));
-				}
-				$newBook->swapPages($packet->pageNumber, $packet->secondaryPageNumber);
-				$modifiedPages = [$packet->pageNumber, $packet->secondaryPageNumber];
-				break;
-			case BookEditPacket::TYPE_SIGN_BOOK:
-				$title = self::checkBookText($packet->title, "title", 16, Limits::INT16_MAX, $cancel);
-				//this one doesn't have a limit in vanilla, so we have to improvise
-				$author = self::checkBookText($packet->author, "author", 256, Limits::INT16_MAX, $cancel);
-
-				$newBook = VanillaItems::WRITTEN_BOOK()
-					->setPages($oldBook->getPages())
-					->setAuthor($author)
-					->setTitle($title)
-					->setGeneration(WrittenBook::GENERATION_ORIGINAL);
-				break;
-			default:
-				return false;
-		}
-
-		//for redundancy, in case of protocol changes, we don't want to pass these directly
-		$action = match($packet->type){
-			BookEditPacket::TYPE_REPLACE_PAGE => PlayerEditBookEvent::ACTION_REPLACE_PAGE,
-			BookEditPacket::TYPE_ADD_PAGE => PlayerEditBookEvent::ACTION_ADD_PAGE,
-			BookEditPacket::TYPE_DELETE_PAGE => PlayerEditBookEvent::ACTION_DELETE_PAGE,
-			BookEditPacket::TYPE_SWAP_PAGES => PlayerEditBookEvent::ACTION_SWAP_PAGES,
-			BookEditPacket::TYPE_SIGN_BOOK => PlayerEditBookEvent::ACTION_SIGN_BOOK,
-			default => throw new AssumptionFailedError("We already filtered unknown types in the switch above")
-		};
-
-		/*
-		 * Plugins may have created books with more than 50 pages; we allow plugins to do this, but not players.
-		 * Don't allow the page count to grow past 50, but allow deleting, swapping or altering text of existing pages.
-		 */
-		$oldPageCount = count($oldBook->getPages());
-		$newPageCount = count($newBook->getPages());
-		if(($newPageCount > $oldPageCount && $newPageCount > 50)){
-			$this->session->getLogger()->debug("Cancelled book edit due to adding too many pages (new page count would be $newPageCount)");
-			$cancel = true;
-		}
-
-		$event = new PlayerEditBookEvent($this->player, $oldBook, $newBook, $action, $modifiedPages);
-		if($cancel){
-			$event->cancel();
-		}
-
-		$event->call();
-		if($event->isCancelled()){
-			return true;
-		}
-
-		$this->player->getInventory()->setItem($packet->inventorySlot, $event->getNewBook());
-
-		return true;
-	}
-
 	public function handleModalFormResponse(ModalFormResponsePacket $packet) : bool{
 		if($packet->cancelReason !== null){
 			//TODO: make APIs for this to allow plugins to use this information
@@ -985,14 +835,6 @@ class InGamePacketHandler extends ChunkRequestPacketHandler{
 		}else{
 			throw new PacketHandlingException("Expected either formData or cancelReason to be set in ModalFormResponsePacket");
 		}
-	}
-
-	public function handleServerSettingsRequest(ServerSettingsRequestPacket $packet) : bool{
-		return false; //TODO: GUI stuff
-	}
-
-	public function handleLabTable(LabTablePacket $packet) : bool{
-		return false; //TODO
 	}
 
 	public function handleLecternUpdate(LecternUpdatePacket $packet) : bool{
@@ -1013,20 +855,6 @@ class InGamePacketHandler extends ChunkRequestPacketHandler{
 		}
 
 		return false;
-	}
-
-	public function handleNetworkStackLatency(NetworkStackLatencyPacket $packet) : bool{
-		return true; //TODO: implement this properly - this is here to silence debug spam from MCPE dev builds
-	}
-
-	public function handleLevelSoundEvent(LevelSoundEventPacket $packet) : bool{
-		/*
-		 * We don't handle this - all sounds are handled by the server now.
-		 * However, some plugins find this useful to detect events like left-click-air, which doesn't have any other
-		 * action bound to it.
-		 * In addition, we use this handler to silence debug noise, since this packet is frequently sent by the client.
-		 */
-		return true;
 	}
 
 	public function handleEmote(EmotePacket $packet) : bool{
