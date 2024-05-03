@@ -1860,9 +1860,6 @@ class Server{
 		Timings::$connection->stopTiming();
 
 		if(($this->tickCounter % self::TARGET_TICKS_PER_SECOND) === 0){
-			if($this->doTitleTick){
-				$this->titleTick();
-			}
 			$this->currentTPS = self::TARGET_TICKS_PER_SECOND;
 			$this->currentUse = 0;
 
